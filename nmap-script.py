@@ -1,8 +1,10 @@
 import nmap
 import utilities as u
-ac = "└" # edode : angled char
-dc = "─" # edode : dash char
-sc = "│" # edode : straight char
+
+ac = "└"
+dc = "─"
+sc = "│"
+
 class NS:
     def main(self=None):
         d_type = {"TCP": "-sV", "TCP SYN":"-sS", "UDP": "-sU", "Ping Sweep": "-sn", "OS Fingerprinting":"-O"}
@@ -10,9 +12,8 @@ class NS:
         nmScan = nmap.PortScanner()
         ip_addr = "192.168.1.9"#NS.ip_address()
         ip_addr = "127.0.0.1/24"# NS.ip_address()
-        ip_addr = "192.168.1.197"#NS.ip_address()
-        ip_addr = "172.17.1.20/24"#NS.ip_address()
-
+        ip_addr = "192.168.1.240"#NS.ip_address()
+        ip_addr = "192.168.1.1/26"#NS.ip_address()
 
         u.Color.cprint("[+] Working on " + ip_addr, "green")
 
@@ -23,7 +24,7 @@ class NS:
         if arg == "-sV" or arg == "-sU": # lisandro : mix with -sS and -O
             port_range = NS.port_range_check()
             NS.TCP_UDP_SCAN.display_scan_result(nmScan, ip_addr=ip_addr, port_range=port_range, arg=arg,
-                                                scan_t=name, display_closed=True, display_mac=True,
+                                                scan_t=name, ss=False, display_closed=True, display_mac=True,
                                                 display_os_details=True)
         elif arg == "-sS" or arg == "-O":
             NS.TCP_UDP_SCAN.display_scan_result(nmScan, ip_addr=ip_addr, arg=arg,
@@ -121,7 +122,7 @@ class NS:
     class TCP_UDP_SCAN:
         def display_scan_result(nmScan, ip_addr="127.0.0.1", port_range=None,
                                 arg=None, scan_t=None, display_closed=False,
-                                ss=None, display_mac=False, display_os_details=False):
+                                ss=False, display_mac=False, display_os_details=False):
             """
 
             :param ip_addr str:
@@ -141,7 +142,7 @@ class NS:
                     x = nmScan
             except KeyError:
                 pass
-
+            closed_ips = {}
             for i, ips in enumerate(x["scan"]):
                 if arg == "-O" and display_os_details:
                     try:
@@ -155,7 +156,8 @@ class NS:
                         accuracy   = []
                 else:
                     os_details = {}
-                    accuracy = []
+
+                    accuracy   = []
 
                 try:
                     denom = nmScan[ips]
@@ -167,9 +169,30 @@ class NS:
                     device_name = denom["vendor"][mac_addr]
                 except KeyError:
                     device_name = "No Device Name"
+
+
+
                 protocol = denom.all_protocols()
                 if port_range is not None:
-                    port_state = denom[protocol[0]][int(port_range)]["state"]
+                    i = 0
+                    open_port = {}
+                    for opp in range(int(port_range.split("-")[0]), int(port_range.split("-")[1]) + 1):
+                        try:
+                            state = denom[protocol[0]][opp]["state"]
+                            version_info = denom[protocol[0]][opp]["version"]
+                            product = denom[protocol[0]][opp]["product"]
+                            extra_info = denom[protocol[0]][opp]["extrainfo"]
+                            open_port[str(opp)] = [state, version_info, product, extra_info]
+                            del state, version_info, product, extra_info
+                        except KeyError:
+                            pass;
+                        except IndexError:
+                            open_port[str(opp)] = ["closed"]
+                            break;
+                        except UnboundLocalError:
+                            pass;
+
+                #print(open_port)
                 if len(denom) > 4:
                     ip_state = denom.state()
                     if port_range is not None:
@@ -203,7 +226,9 @@ class NS:
                                                    display_os_details=display_os_details, os_details=os_details, accuracy=accuracy,
                                                    device_name=device_name)
                 else:
-                    u.Color.cprint("All ports may be closed on " + ips + " (" + device_name + ")", "red")
+                    closed_ips[ips] = device_name
+            u.Color.cprint("\nAll selected ports may be closed on those IPs", "red")
+            [u.Color.cprint(z + "\t" + closed_ips[z], "red") for z in closed_ips]
 
         def port_parse(ports, scan_t, ip_addr, i, is_closed=False,
                        display_mac=False, mac_addr="",
